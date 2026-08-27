@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Anki Quick Adder",
+  "version": "1.0",
+  "description": "Quickly add Anki flashcards from any webpage and export them for import.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "downloads"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Anki Quick Adder"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-anki-modal": {
+      "suggested_key": {
+        "default": "Alt+A",
+        "mac": "Alt+A"
+      },
+      "description": "Toggle the Anki Add Card modal"
+    }
+  }
+}
