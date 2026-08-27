@@ -16,10 +16,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   
-  // Format string for TSV (remove literal tabs and newlines that break the format)
-  function sanitizeForTSV(str) {
+  // Format string for TSV (Anki format)
+  function formatForAnki(str) {
     if (!str) return "";
-    return str.replace(/\t/g, ' ').replace(/\n/g, ' ').replace(/\r/g, '');
+    // If the field contains tabs, newlines, or quotes, we must wrap it in quotes
+    // and escape internal quotes by doubling them (standard CSV/TSV rule)
+    if (str.includes('\t') || str.includes('\n') || str.includes('\r') || str.includes('"')) {
+      const escaped = str.replace(/"/g, '""');
+      return `"${escaped}"`;
+    }
+    return str;
   }
   
   // Export logic
@@ -27,15 +33,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentCards.length === 0) return;
     
     // Create TSV content
-    // Anki format: Front \t Back \t Tags \n
-    let tsvContent = "";
+    // Anki headers
+    let tsvContent = "#separator:tab\n#html:true\n";
     
     currentCards.forEach(card => {
-      const front = sanitizeForTSV(card.front);
-      const back = sanitizeForTSV(card.back);
-      const tags = sanitizeForTSV(card.tags);
+      const front = formatForAnki(card.front);
+      const back = formatForAnki(card.back);
       
-      tsvContent += `${front}\t${back}\t${tags}\n`;
+      tsvContent += `${front}\t${back}\n`;
     });
     
     // Create Blob and trigger download

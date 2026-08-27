@@ -36,57 +36,26 @@ function createModal() {
         
         <div class="field">
           <div class="field-label" data-field="front">
-            <span>Front</span>
-            <button class="dropdown-btn" aria-label="Front options" aria-expanded="false">
+            <button class="dropdown-btn" aria-label="Front options" aria-expanded="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
-            <div class="dropdown-menu">
-              <button type="button">Text</button>
-              <button type="button">Cloze</button>
-              <button type="button">Image</button>
-              <button type="button">Audio</button>
-            </div>
+            <span>Front</span>
           </div>
           <div class="field-input" id="anki-front-field" contenteditable="true"></div>
         </div>
 
         <div class="field">
           <div class="field-label" data-field="back">
-            <span>Back</span>
-            <button class="dropdown-btn" aria-label="Back options" aria-expanded="false">
+            <button class="dropdown-btn" aria-label="Back options" aria-expanded="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
-            <div class="dropdown-menu">
-              <button type="button">Text</button>
-              <button type="button">Cloze</button>
-              <button type="button">Image</button>
-              <button type="button">Audio</button>
-            </div>
+            <span>Back</span>
           </div>
           <div class="field-input" id="anki-back-field" contenteditable="true"></div>
-        </div>
-
-        <div class="spacer"></div>
-
-        <div class="field">
-          <div class="field-label" data-field="tags">
-            <span>Tags</span>
-            <button class="dropdown-btn" aria-label="Tags options" aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-            <div class="dropdown-menu">
-              <button type="button">Recently used</button>
-              <button type="button">Suggested</button>
-              <button type="button">Add new tag</button>
-            </div>
-          </div>
-          <div class="field-input" id="anki-tags-field" contenteditable="true"></div>
         </div>
 
         <div class="footer-actions">
@@ -105,7 +74,6 @@ function createModal() {
   const addBtn = shadowRoot.getElementById('anki-add-btn');
   const frontField = shadowRoot.getElementById('anki-front-field');
   const backField = shadowRoot.getElementById('anki-back-field');
-  const tagsField = shadowRoot.getElementById('anki-tags-field');
   
   // Prevent closing when clicking inside the modal
   modalContent.addEventListener('click', (e) => e.stopPropagation());
@@ -129,17 +97,28 @@ function createModal() {
     // Use innerHTML to preserve image tags (<img src="data:image/...">)
     const frontHTML = frontField.innerHTML.trim();
     const backHTML = backField.innerHTML.trim();
-    const tags = tagsField.textContent.trim(); // Changed to textContent since it's a div now
     
-    if (!frontHTML && !backHTML) {
-      // Don't add completely empty cards
+    if (!frontHTML || !backHTML) {
+      // Highlight empty fields
+      if (!frontHTML) {
+        frontField.style.borderColor = '#d32f2f';
+      }
+      if (!backHTML) {
+        backField.style.borderColor = '#d32f2f';
+      }
+      
+      // Remove highlight after 2 seconds
+      setTimeout(() => {
+        frontField.style.borderColor = '';
+        backField.style.borderColor = '';
+      }, 2000);
+      
       return;
     }
     
     const card = {
       front: frontHTML,
       back: backHTML,
-      tags: tags,
       timestamp: Date.now()
     };
     
@@ -147,6 +126,18 @@ function createModal() {
     chrome.storage.local.get({ pendingCards: [] }, (result) => {
       const updatedCards = [...result.pendingCards, card];
       chrome.storage.local.set({ pendingCards: updatedCards }, () => {
+        if (chrome.runtime.lastError) {
+          console.error("Error saving card:", chrome.runtime.lastError);
+          const originalText = addBtn.innerText;
+          addBtn.innerText = "Error Saving!";
+          addBtn.style.backgroundColor = "#d32f2f";
+          setTimeout(() => {
+            addBtn.innerText = originalText;
+            addBtn.style.backgroundColor = "";
+          }, 2000);
+          return;
+        }
+
         // Visual feedback & clear fields
         frontField.innerHTML = '';
         backField.innerHTML = '';
@@ -162,35 +153,25 @@ function createModal() {
     });
   });
   
-  // Dropdown Logic
+  // Accordion Logic
   const buttons = shadowRoot.querySelectorAll('.dropdown-btn');
 
   buttons.forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const menu = btn.nextElementSibling;
-      const isOpen = menu.classList.contains('show');
+      // The input is the next sibling element of the parent .field-label
+      const fieldInput = btn.closest('.field-label').nextElementSibling;
+      const isCollapsed = fieldInput.classList.contains('collapsed');
 
-      // close all other menus
-      shadowRoot.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
-      shadowRoot.querySelectorAll('.dropdown-btn.open').forEach(b => {
-        b.classList.remove('open');
-        b.setAttribute('aria-expanded', 'false');
-      });
-
-      if (!isOpen) {
-        menu.classList.add('show');
-        btn.classList.add('open');
+      if (isCollapsed) {
+        fieldInput.classList.remove('collapsed');
+        btn.classList.remove('collapsed');
         btn.setAttribute('aria-expanded', 'true');
+      } else {
+        fieldInput.classList.add('collapsed');
+        btn.classList.add('collapsed');
+        btn.setAttribute('aria-expanded', 'false');
       }
-    });
-  });
-
-  shadowRoot.addEventListener('click', () => {
-    shadowRoot.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
-    shadowRoot.querySelectorAll('.dropdown-btn.open').forEach(b => {
-      b.classList.remove('open');
-      b.setAttribute('aria-expanded', 'false');
     });
   });
 
