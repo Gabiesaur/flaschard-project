@@ -2,9 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const countEl = document.getElementById('card-count');
   const exportBtn = document.getElementById('export-btn');
   const clearBtn = document.getElementById('clear-btn');
+  const viewCardsBtn = document.getElementById('view-cards-btn');
   
   let currentCards = [];
-  
+
   // Load cards from storage
   function loadCards() {
     chrome.storage.local.get({ pendingCards: [] }, (result) => {
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       exportBtn.disabled = currentCards.length === 0;
       clearBtn.disabled = currentCards.length === 0;
+      viewCardsBtn.disabled = currentCards.length === 0;
     });
   }
   
@@ -70,6 +72,11 @@ document.addEventListener('DOMContentLoaded', () => {
       a.click();
       URL.revokeObjectURL(url);
     }
+  });
+  
+  // View cards logic
+  viewCardsBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: 'cards.html' });
   });
   
   // Clear logic

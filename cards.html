@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pending Cards - Anki Quick Adder</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    h1 {
+      margin: 0;
+      color: #1a1a1a;
+      font-size: 24px;
+    }
+    .btn {
+      padding: 10px 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      background-color: #fff;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+      font-weight: 500;
+    }
+    .btn:hover {
+      background-color: #f9f9f9;
+    }
+    .btn-primary {
+      background-color: #0078d7;
+      color: white;
+      border-color: #0060ac;
+    }
+    .btn-primary:hover {
+      background-color: #0060ac;
+    }
+    .btn-danger {
+      color: #d32f2f;
+      border-color: #ffcdd2;
+    }
+    .btn-danger:hover {
+      background-color: #ffebee;
+    }
+    .cards-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 600px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #eaeaea;
+      word-break: break-word;
+    }
+    .card-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .card-header {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #888;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .anki-editor-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      background: #f4f4f5;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #e4e4e7;
+      margin-bottom: 12px;
+      user-select: none;
+    }
+    .btn-group {
+      display: inline-flex;
+      align-items: center;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+    .anki-tool-btn {
+      background: #ffffff;
+      border: none;
+      border-right: 1px solid #e5e7eb;
+      padding: 4px 8px;
+      min-width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      color: #374151;
+      font-size: 13px;
+      line-height: 1;
+      transition: background-color 0.15s ease, color 0.15s ease;
+      user-select: none;
+      font-family: inherit;
+    }
+    .anki-tool-btn:first-child {
+      border-top-left-radius: 5px;
+      border-bottom-left-radius: 5px;
+    }
+    .anki-tool-btn:last-child {
+      border-right: none;
+      border-top-right-radius: 5px;
+      border-bottom-right-radius: 5px;
+    }
+    .anki-tool-btn:hover {
+      background-color: #f3f4f6;
+      color: #111827;
+    }
+    .anki-tool-btn:active {
+      background-color: #e5e7eb;
+    }
+    .anki-arrow-btn {
+      min-width: 16px;
+      padding: 4px 3px;
+      color: #6b7280;
+    }
+    .anki-arrow-btn:hover {
+      background-color: #e5e7eb;
+      color: #111827;
+    }
+    .color-indicator-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .color-letter {
+      font-weight: 700;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .color-bar {
+      display: block;
+      width: 12px;
+      height: 2.5px;
+      border-radius: 1px;
+      margin-top: 1px;
+    }
+    .script-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-weight: 600;
+      width: 18px;
+      height: 18px;
+      user-select: none;
+    }
+    .script-base {
+      font-size: 13px;
+      line-height: 1;
+      position: relative;
+      left: -2px;
+    }
+    .script-super {
+      font-size: 8.5px;
+      position: absolute;
+      top: 1px;
+      right: 0px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .script-sub {
+      font-size: 8.5px;
+      position: absolute;
+      bottom: 1px;
+      right: 0px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .color-tool-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+    .color-picker-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 156px;
+    }
+    .color-palette {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .color-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      cursor: pointer;
+      border: 1px solid rgba(0,0,0,0.15);
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .color-swatch:hover {
+      transform: scale(1.15);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+    }
+    .custom-color-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #374151;
+      padding-top: 6px;
+      border-top: 1px solid #f3f4f6;
+      font-weight: 500;
+    }
+    .custom-color-row input[type="color"] {
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      width: 36px;
+      height: 26px;
+      padding: 0;
+      cursor: pointer;
+      background: none;
+    }
+    .card-front {
+      font-size: 15px;
+      font-weight: normal;
+      color: #1f2937;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #f0f0f0;
+      padding-bottom: 16px;
+      line-height: 1.5;
+    }
+    .card-back {
+      font-size: 15px;
+      font-weight: normal;
+      color: #1f2937;
+      flex-grow: 1;
+      line-height: 1.5;
+    }
+    .card img,
+    .card video,
+    .card iframe {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 4px;
+    }
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #eaeaea;
+      gap: 8px;
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .editing {
+      outline: 2px solid #0078d7;
+      padding: 8px;
+      border-radius: 4px;
+      background: #fafafa;
+      min-height: 40px;
+      outline-offset: 2px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      color: #666;
+      border: 1px solid #eaeaea;
+    }
+    .empty-state h2 {
+      margin-top: 0;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Pending Cards (<span id="card-count">0</span>)</h1>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn btn-primary" id="export-btn">Export for Anki (.txt)</button>
+        <button class="btn btn-danger" id="clear-btn">Clear All</button>
+      </div>
+    </header>
+    
+    <div id="cards-container" class="cards-grid">
+      <!-- Cards will be injected here -->
+    </div>
+  </div>
+  <script src="cards.js"></script>
+</body>
+</html>
