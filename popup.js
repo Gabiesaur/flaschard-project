@@ -4,6 +4,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearBtn = document.getElementById('clear-btn');
   const viewCardsBtn = document.getElementById('view-cards-btn');
   const deckSelect = document.getElementById('deck-select');
+  const changeKeybindBtn = document.getElementById('change-keybind-btn');
+
+  if (changeKeybindBtn) {
+    changeKeybindBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    });
+  }
 
   let currentCards = [];
 
