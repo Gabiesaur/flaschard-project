@@ -14,7 +14,9 @@ function toggleModal() {
     const isVisible = modalContainer.style.display !== "none";
     modalContainer.style.display = isVisible ? "none" : "flex";
     if (!isVisible) {
-      setTimeout(() => shadowRoot.getElementById('anki-front-field').focus(), 50);
+      shadowRoot.getElementById('anki-selection-overlay').style.display = 'flex';
+      shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
+      shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
     }
   }
 }
@@ -30,10 +32,40 @@ function createModal() {
   
   shadowRoot.innerHTML = `
     <link rel="stylesheet" href="${cssUrl}">
-    <div class="anki-modal-overlay" id="anki-overlay">
-      <div class="card" id="anki-modal-content">
+    
+    <div class="anki-modal-overlay" id="anki-selection-overlay">
+      <div class="card" id="anki-selection-content">
         <div class="modal-top-bar">
-          <button class="close-btn-top" id="anki-close-btn" title="Close (Esc)">
+          <button class="close-btn-top" id="anki-sel-close-btn" title="Close (Esc)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="type-selection">
+          <div class="type-selection-title">Choose Card Type</div>
+          <button type="button" class="type-btn" id="anki-type-basic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            Basic Card
+          </button>
+          <button type="button" class="type-btn" id="anki-type-occlusion">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            Image Occlusion (Screenshot)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="crop-overlay-container" id="anki-crop-overlay" style="display: none;">
+      <div class="crop-overlay-mask"></div>
+      <div class="crop-box" id="anki-crop-box" style="display: none;"></div>
+    </div>
+
+    <div class="anki-modal-overlay" id="anki-editor-overlay" style="display: none;">
+      <div class="card" id="anki-editor-content">
+        <div class="modal-top-bar">
+          <button class="close-btn-top" id="anki-editor-close-btn" title="Close (Esc)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -150,7 +182,7 @@ function createModal() {
 
         <!-- Hidden input for file picking -->
         <input type="file" id="anki-file-input" accept="image/*,audio/*" style="display:none;">
-        
+
         <div class="field">
           <div class="field-label" data-field="front">
             <button class="dropdown-btn" aria-label="Front options" aria-expanded="true">
@@ -185,25 +217,143 @@ function createModal() {
   document.body.appendChild(modalContainer);
   
   // Event Listeners
-  const overlay = shadowRoot.getElementById('anki-overlay');
-  const modalContent = shadowRoot.getElementById('anki-modal-content');
-  const closeBtn = shadowRoot.getElementById('anki-close-btn');
-  const addBtn = shadowRoot.getElementById('anki-add-btn');
+  const selOverlay = shadowRoot.getElementById('anki-selection-overlay');
+  const selCloseBtn = shadowRoot.getElementById('anki-sel-close-btn');
+  const typeBasicBtn = shadowRoot.getElementById('anki-type-basic');
+  const typeOcclusionBtn = shadowRoot.getElementById('anki-type-occlusion');
+
+  const cropOverlay = shadowRoot.getElementById('anki-crop-overlay');
+  const cropBox = shadowRoot.getElementById('anki-crop-box');
+
+  const editorOverlay = shadowRoot.getElementById('anki-editor-overlay');
+  const editorCloseBtn = shadowRoot.getElementById('anki-editor-close-btn');
+  const editorContent = shadowRoot.getElementById('anki-editor-content');
+
   const frontField = shadowRoot.getElementById('anki-front-field');
   const backField = shadowRoot.getElementById('anki-back-field');
-  
+  const addBtn = shadowRoot.getElementById('anki-add-btn');
+
+  selCloseBtn.addEventListener('click', toggleModal);
+  selOverlay.addEventListener('click', toggleModal);
+  shadowRoot.getElementById('anki-selection-content').addEventListener('click', (e) => e.stopPropagation());
+
+  editorCloseBtn.addEventListener('click', toggleModal);
+  editorOverlay.addEventListener('click', toggleModal);
+  editorContent.addEventListener('click', (e) => e.stopPropagation());
+
+  typeBasicBtn.addEventListener('click', () => {
+    selOverlay.style.display = 'none';
+    editorOverlay.style.display = 'flex';
+    setTimeout(() => frontField.focus(), 50);
+  });
+
+  typeOcclusionBtn.addEventListener('click', () => {
+    selOverlay.style.display = 'none';
+    cropOverlay.style.display = 'block';
+    document.body.style.userSelect = 'none'; // prevent text selection while cropping
+  });
+
+  // Crop Logic
+  let isCropping = false;
+  let startX, startY;
+
+  cropOverlay.addEventListener('pointerdown', (e) => {
+    isCropping = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    cropBox.style.display = 'block';
+    cropBox.style.left = startX + 'px';
+    cropBox.style.top = startY + 'px';
+    cropBox.style.width = '0px';
+    cropBox.style.height = '0px';
+  });
+
+  cropOverlay.addEventListener('pointermove', (e) => {
+    if (!isCropping) return;
+    const currentX = e.clientX;
+    const currentY = e.clientY;
+    
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
+
+    cropBox.style.left = left + 'px';
+    cropBox.style.top = top + 'px';
+    cropBox.style.width = width + 'px';
+    cropBox.style.height = height + 'px';
+  });
+
+  cropOverlay.addEventListener('pointerup', (e) => {
+    if (!isCropping) return;
+    isCropping = false;
+    document.body.style.userSelect = '';
+    
+    const currentX = Math.max(0, Math.min(window.innerWidth, e.clientX));
+    const currentY = Math.max(0, Math.min(window.innerHeight, e.clientY));
+    
+    const left = Math.min(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
+
+    cropOverlay.style.display = 'none';
+    cropBox.style.display = 'none';
+
+    if (width < 10 || height < 10) {
+      // Crop area too small, cancel
+      toggleModal();
+      return;
+    }
+
+    // Hide everything to take a clean screenshot
+    modalContainer.style.display = 'none';
+
+    // Wait a tiny bit for the UI to hide
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ action: 'capture-screen' }, (response) => {
+        if (response && response.dataUrl) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            // devicePixelRatio is important if taking screenshot on retina displays
+            const ratio = window.devicePixelRatio || 1;
+            ctx.drawImage(img, left * ratio, top * ratio, width * ratio, height * ratio, 0, 0, width, height);
+            
+            const croppedDataUrl = canvas.toDataURL('image/png');
+            
+            // Save directly
+            chrome.storage.local.get({ pendingCards: [] }, (result) => {
+              const cards = result.pendingCards || [];
+              cards.push({
+                front: '',
+                back: '',
+                type: 'image-occlusion',
+                imageOcclusion: { image: croppedDataUrl, masks: [] },
+                createdAt: new Date().toISOString()
+              });
+              chrome.storage.local.set({ pendingCards: cards }, () => {
+                // Done
+              });
+            });
+          };
+          img.src = response.dataUrl;
+        } else {
+          alert('Failed to capture screen.');
+          toggleModal();
+        }
+      });
+    }, 150);
+  });
+
   let activeField = frontField;
   
   frontField.addEventListener('focus', () => { activeField = frontField; });
   backField.addEventListener('focus', () => { activeField = backField; });
   
-  // Prevent closing when clicking inside the modal
-  modalContent.addEventListener('click', (e) => e.stopPropagation());
-  
-  // Close on overlay click or close buttons
-  overlay.addEventListener('click', toggleModal);
-  closeBtn.addEventListener('click', toggleModal);
-
   // Add Card action
   const handleAddCard = () => {
     const frontHTML = frontField.innerHTML.trim();
@@ -224,6 +374,7 @@ function createModal() {
       cards.push({
         front: frontHTML,
         back: backHTML,
+        type: 'basic',
         createdAt: new Date().toISOString()
       });
       chrome.storage.local.set({ pendingCards: cards }, () => {
@@ -352,7 +503,7 @@ function createModal() {
     document.execCommand('hiliteColor', false, currentHiliteColor);
   });
 
-  modalContent.addEventListener('mousedown', (e) => {
+  editorContent.addEventListener('mousedown', (e) => {
     if (!e.target.closest('.color-tool-wrap')) {
       closeColorDropdowns();
     }
@@ -465,7 +616,4 @@ function createModal() {
       }
     });
   });
-
-  // Focus front field initially
-  setTimeout(() => frontField.focus(), 50);
 }

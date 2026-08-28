@@ -3,27 +3,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportBtn = document.getElementById('export-btn');
   const clearBtn = document.getElementById('clear-btn');
   const cardsContainer = document.getElementById('cards-container');
-  
+
   let currentCards = [];
-  
+
+  function imageOcclusionPreview(card) {
+    const occlusion = card.imageOcclusion;
+    if (!occlusion?.image) return '';
+    const masks = (occlusion.masks || []).map(mask =>
+      `<span style="position:absolute;left:${mask.left * 100}%;top:${mask.top * 100}%;width:${mask.width * 100}%;height:${mask.height * 100}%;background:rgba(37,99,235,.42);border:2px solid #1d4ed8;border-radius:${mask.shape === 'ellipse' ? '50%' : '3px'};"></span>`
+    ).join('');
+    return `<div style="position:relative;display:inline-block;max-width:100%;"><img src="${occlusion.image}" style="display:block;max-width:100%;border-radius:4px;">${masks}</div>`;
+  }
+
+  function imageOcclusionField(card, revealMasks) {
+    const occlusion = card.imageOcclusion;
+    if (!occlusion || !occlusion.image || !occlusion.masks?.length) return '';
+    const maskClass = revealMasks ? 'cloze-highlight' : 'cloze';
+    const masks = occlusion.masks.map(mask =>
+      `<div class="${maskClass}" data-ordinal="1" data-shape="${mask.shape === 'ellipse' ? 'ellipse' : 'rect'}" data-left="${mask.left.toFixed(4)}" data-top="${mask.top.toFixed(4)}" data-width="${mask.width.toFixed(4)}" data-height="${mask.height.toFixed(4)}" data-occludeInactive="1"></div>`
+    ).join('');
+    const extra = revealMasks ? card.back : card.front;
+    return `<div style="display: none">${masks}</div><div id="err"></div><div id="image-occlusion-container"><img src="${occlusion.image}"><canvas id="image-occlusion-canvas"></canvas></div><script>try { anki.imageOcclusion.setup(); } catch (exc) { document.getElementById("err").innerHTML = "Error loading image occlusion. Is your Anki version up to date?"; }</script>${extra ? `<div>${extra}</div>` : ''}${revealMasks ? '<div><button id="toggle">Toggle Masks</button></div>' : ''}`;
+  }
+
   // Load cards from storage
   function loadCards() {
     chrome.storage.local.get({ pendingCards: [] }, (result) => {
       currentCards = result.pendingCards;
       countEl.textContent = currentCards.length;
-      
+
       exportBtn.disabled = currentCards.length === 0;
       clearBtn.disabled = currentCards.length === 0;
-      
+
       renderCards();
     });
   }
-  
+
   function createToolbar(getTargetEl) {
     const getTarget = typeof getTargetEl === 'function' ? getTargetEl : () => getTargetEl;
     const toolbar = document.createElement('div');
     toolbar.className = 'anki-editor-toolbar';
-    
+
     toolbar.innerHTML = `
       <!-- Group 1: B, I, U -->
       <div class="btn-group">
@@ -311,44 +331,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderCards() {
     cardsContainer.innerHTML = '';
-    
+
     if (currentCards.length === 0) {
       cardsContainer.innerHTML = '<div class="empty-state"><h2>No pending cards!</h2><p>Use the extension to add some cards first.</p></div>';
       cardsContainer.style.display = 'block';
       return;
     }
-    
+
     cardsContainer.style.display = 'flex';
-    
+
     currentCards.forEach((card, index) => {
       const cardEl = document.createElement('div');
       cardEl.className = 'card';
-      
+
       const frontHeaderRow = document.createElement('div');
       frontHeaderRow.className = 'card-header-row';
       const frontHeader = document.createElement('div');
       frontHeader.className = 'card-header';
-      frontHeader.textContent = 'Front';
+      frontHeader.textContent = card.type === 'image-occlusion' ? 'Image occlusion' : 'Front · Basic';
       frontHeaderRow.appendChild(frontHeader);
-      
+
       const frontEl = document.createElement('div');
       frontEl.className = 'card-front';
-      frontEl.innerHTML = card.front;
-      
+      frontEl.innerHTML = card.type === 'image-occlusion' ? `${imageOcclusionPreview(card)}${card.front ? `<div>${card.front}</div>` : ''}` : card.front;
+
       const backHeaderRow = document.createElement('div');
       backHeaderRow.className = 'card-header-row';
       const backHeader = document.createElement('div');
       backHeader.className = 'card-header';
       backHeader.textContent = 'Back';
       backHeaderRow.appendChild(backHeader);
-      
+
       const backEl = document.createElement('div');
       backEl.className = 'card-back';
-      backEl.innerHTML = card.back;
-      
+      backEl.innerHTML = card.type === 'image-occlusion' ? `${imageOcclusionPreview(card)}${card.back ? `<div>${card.back}</div>` : ''}` : card.back;
+
       const actionsEl = document.createElement('div');
       actionsEl.className = 'card-actions';
-      
+
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-small';
       editBtn.textContent = 'Edit';
@@ -357,7 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cancelBtn.className = 'btn btn-small';
       cancelBtn.textContent = 'Cancel';
       cancelBtn.style.display = 'none';
-      
+
       let isEditing = false;
       let cardToolbar = null;
       let activeEditingField = frontEl;
@@ -376,20 +396,20 @@ document.addEventListener('DOMContentLoaded', () => {
         editBtn.textContent = 'Edit';
         editBtn.classList.remove('btn-primary');
         cancelBtn.style.display = 'none';
-        
+
         if (cardToolbar) {
           cardToolbar.remove();
           cardToolbar = null;
         }
       };
-      
+
       editBtn.addEventListener('click', () => {
         if (!isEditing) {
           isEditing = true;
           activeEditingField = frontEl;
           originalFront = frontEl.innerHTML;
           originalBack = backEl.innerHTML;
-          
+
           frontEl.contentEditable = 'true';
           backEl.contentEditable = 'true';
           frontEl.classList.add('editing');
@@ -397,11 +417,11 @@ document.addEventListener('DOMContentLoaded', () => {
           editBtn.textContent = 'Save';
           editBtn.classList.add('btn-primary');
           cancelBtn.style.display = 'inline-block';
-          
+
           // Place single toolbar at the top of the card above fields
           cardToolbar = createToolbar(() => activeEditingField);
           cardEl.insertBefore(cardToolbar, frontHeaderRow);
-          
+
           frontEl.focus();
         } else {
           currentCards[index].front = frontEl.innerHTML;
@@ -416,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
         backEl.innerHTML = originalBack;
         exitEditMode();
       });
-      
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'btn btn-small btn-danger';
       deleteBtn.textContent = 'Delete';
@@ -426,21 +446,21 @@ document.addEventListener('DOMContentLoaded', () => {
           chrome.storage.local.set({ pendingCards: currentCards });
         }
       });
-      
+
       actionsEl.appendChild(editBtn);
       actionsEl.appendChild(cancelBtn);
       actionsEl.appendChild(deleteBtn);
-      
+
       cardEl.appendChild(frontHeaderRow);
       cardEl.appendChild(frontEl);
       cardEl.appendChild(backHeaderRow);
       cardEl.appendChild(backEl);
       cardEl.appendChild(actionsEl);
-      
+
       cardsContainer.appendChild(cardEl);
     });
   }
-  
+
   // Format string for TSV (Anki format)
   function formatForAnki(str) {
     if (!str) return "";
@@ -450,22 +470,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return str;
   }
-  
+
   // Export logic
   exportBtn.addEventListener('click', () => {
     if (currentCards.length === 0) return;
-    
+
     let tsvContent = "#separator:tab\n#html:true\n";
-    
+
     currentCards.forEach(card => {
-      const front = formatForAnki(card.front);
-      const back = formatForAnki(card.back);
+      const isImageOcclusion = card.type === 'image-occlusion';
+      const front = formatForAnki(isImageOcclusion ? imageOcclusionField(card, false) : card.front);
+      const back = formatForAnki(isImageOcclusion ? imageOcclusionField(card, true) : card.back);
       tsvContent += `${front}\t${back}\n`;
     });
-    
+
     const blob = new Blob([tsvContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    
+
     if (chrome.downloads) {
       chrome.downloads.download({
         url: url,
@@ -486,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
       URL.revokeObjectURL(url);
     }
   });
-  
+
   // Clear logic
   clearBtn.addEventListener('click', () => {
     if (confirm("Are you sure you want to clear all pending cards? Make sure you exported them first!")) {
@@ -495,14 +516,14 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   });
-  
+
   // Listen for changes from other contexts (like background script or popup)
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local' && changes.pendingCards) {
       loadCards();
     }
   });
-  
+
   // Initial load
   loadCards();
 });
