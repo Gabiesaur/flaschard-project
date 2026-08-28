@@ -1,6 +1,7 @@
 let shadowRoot = null;
 let modalContainer = null;
 let isSyncingDraft = false;
+let updateDeckSelects = null;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "toggle-modal") {
@@ -31,45 +32,56 @@ chrome.storage.onChanged.addListener((changes, area) => {
 function toggleModal() {
   if (!modalContainer) {
     createModal();
-  } else {
-    const selOverlay = shadowRoot.getElementById('anki-selection-overlay');
-    const edOverlay = shadowRoot.getElementById('anki-editor-overlay');
-    const cropOverlay = shadowRoot.getElementById('anki-crop-overlay');
-    const toast = shadowRoot.getElementById('anki-toast');
+  }
+  
+  const selOverlay = shadowRoot.getElementById('anki-selection-overlay');
+  const edOverlay = shadowRoot.getElementById('anki-editor-overlay');
+  const cropOverlay = shadowRoot.getElementById('anki-crop-overlay');
+  const toast = shadowRoot.getElementById('anki-toast');
 
-    const isVisible = selOverlay.style.display !== "none" || edOverlay.style.display !== "none" || cropOverlay.style.display !== "none";
+  const isVisible = selOverlay.style.display !== "none" || edOverlay.style.display !== "none" || cropOverlay.style.display !== "none";
+  
+  if (isVisible) {
+    selOverlay.style.display = 'none';
+    edOverlay.style.display = 'none';
+    cropOverlay.style.display = 'none';
     
-    if (isVisible) {
-      selOverlay.style.display = 'none';
-      edOverlay.style.display = 'none';
-      cropOverlay.style.display = 'none';
-      
-      if (!toast || !toast.classList.contains('show')) {
-        modalContainer.style.display = "none";
-      }
-    } else {
-      modalContainer.style.display = "block";
-      selOverlay.style.display = 'flex';
-      edOverlay.style.display = 'none';
-      cropOverlay.style.display = 'none';
-      
-      // Pull latest draft manually when toggling just to be safe
-      chrome.storage.local.get(['modalDraftState'], (result) => {
-        const frontField = shadowRoot.getElementById('anki-front-field');
-        const backField = shadowRoot.getElementById('anki-back-field');
-        if (frontField && backField) {
-          isSyncingDraft = true;
-          if (result.modalDraftState) {
-            frontField.innerHTML = result.modalDraftState.front || '';
-            backField.innerHTML = result.modalDraftState.back || '';
-          } else {
-            frontField.innerHTML = '';
-            backField.innerHTML = '';
-          }
-          setTimeout(() => { isSyncingDraft = false; }, 50);
-        }
-      });
+    if (!toast || !toast.classList.contains('show')) {
+      modalContainer.style.display = "none";
     }
+  } else {
+    modalContainer.style.display = 'block';
+    selOverlay.style.display = 'flex';
+    edOverlay.style.display = 'none';
+    cropOverlay.style.display = 'none';
+    
+    // Fetch decks and populate
+    chrome.runtime.sendMessage({ action: 'anki-connect', ankiAction: 'deckNames' }, (response) => {
+      if (response && response.success) {
+        chrome.storage.local.get({ targetDeck: 'Default' }, (result) => {
+          if (typeof updateDeckSelects === 'function') {
+            updateDeckSelects(response.result, result.targetDeck);
+          }
+        });
+      }
+    });
+
+    // Pull latest draft manually when toggling just to be safe
+    chrome.storage.local.get(['modalDraftState'], (result) => {
+      const frontField = shadowRoot.getElementById('anki-front-field');
+      const backField = shadowRoot.getElementById('anki-back-field');
+      if (frontField && backField) {
+        isSyncingDraft = true;
+        if (result.modalDraftState) {
+          frontField.innerHTML = result.modalDraftState.front || '';
+          backField.innerHTML = result.modalDraftState.back || '';
+        } else {
+          frontField.innerHTML = '';
+          backField.innerHTML = '';
+        }
+        setTimeout(() => { isSyncingDraft = false; }, 50);
+      }
+    });
   }
 }
 
@@ -85,9 +97,15 @@ function createModal() {
   shadowRoot.innerHTML = `
     <link rel="stylesheet" href="${cssUrl}">
     
-    <div class="anki-modal-overlay" id="anki-selection-overlay">
+    <div class="anki-modal-overlay" id="anki-selection-overlay" style="display: none;">
       <div class="card" id="anki-selection-content">
-        <div class="modal-top-bar">
+        <div class="modal-top-bar" style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 8px; align-items: center; color: #333; margin-left: 8px;">
+            <label for="anki-deck-select-type" style="font-size: 12px; font-weight: 500;">Deck:</label>
+            <select id="anki-deck-select-type" class="anki-deck-select" style="padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 12px; outline: none; max-width: 140px; background: white;">
+              <option value="Default">Default</option>
+            </select>
+          </div>
           <button class="close-btn-top" id="anki-sel-close-btn" title="Close (Esc)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -116,7 +134,13 @@ function createModal() {
 
     <div class="anki-modal-overlay" id="anki-editor-overlay" style="display: none;">
       <div class="card" id="anki-editor-content">
-        <div class="modal-top-bar">
+        <div class="modal-top-bar" style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 8px; align-items: center; color: #333; margin-left: 8px;">
+            <label for="anki-deck-select-edit" style="font-size: 12px; font-weight: 500;">Deck:</label>
+            <select id="anki-deck-select-edit" class="anki-deck-select" style="padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 12px; outline: none; max-width: 140px; background: white;">
+              <option value="Default">Default</option>
+            </select>
+          </div>
           <button class="close-btn-top" id="anki-editor-close-btn" title="Close (Esc)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -292,6 +316,31 @@ function createModal() {
   const editorCloseBtn = shadowRoot.getElementById('anki-editor-close-btn');
   const editorContent = shadowRoot.getElementById('anki-editor-content');
 
+  const deckSelects = shadowRoot.querySelectorAll('.anki-deck-select');
+
+  updateDeckSelects = function(decks, selectedDeck) {
+    deckSelects.forEach(select => {
+      select.innerHTML = '';
+      decks.forEach(deck => {
+        const option = document.createElement('option');
+        option.value = deck;
+        option.textContent = deck;
+        select.appendChild(option);
+      });
+      if (decks.includes(selectedDeck)) {
+        select.value = selectedDeck;
+      }
+    });
+  };
+
+  deckSelects.forEach(select => {
+    select.addEventListener('change', (e) => {
+      const val = e.target.value;
+      chrome.storage.local.set({ targetDeck: val });
+      deckSelects.forEach(s => { s.value = val; });
+    });
+  });
+
   const frontField = shadowRoot.getElementById('anki-front-field');
   const backField = shadowRoot.getElementById('anki-back-field');
   const addBtn = shadowRoot.getElementById('anki-add-btn');
@@ -466,31 +515,72 @@ function createModal() {
                 screenshotTargetField = null;
               }, 50);
             } else {
-              // We are in Image Occlusion mode, copy directly to clipboard
-              fetch(croppedDataUrl)
-                .then(res => res.blob())
-                .then(blob => {
-                  return navigator.clipboard.write([
-                    new ClipboardItem({
-                      [blob.type]: blob
-                    })
-                  ]);
-                })
-                .then(() => {
+              // We are in Image Occlusion mode, sync directly to Anki
+              const base64Data = croppedDataUrl.replace(/^data:image\/(png|jpeg);base64,/, "");
+              const filename = `anki-quick-adder-io-${Date.now()}.png`;
+              
+              chrome.storage.local.get({ targetDeck: 'Default' }, async (result) => {
+                const targetDeck = result.targetDeck;
+                
+                try {
+                  // 1. Store Media File
+                  const storeRes = await new Promise(resolve => {
+                    chrome.runtime.sendMessage({
+                      action: 'anki-connect',
+                      ankiAction: 'storeMediaFile',
+                      params: { filename: filename, data: base64Data }
+                    }, resolve);
+                  });
+                  
+                  if (!storeRes || !storeRes.success) throw new Error(storeRes?.error || 'Failed to save media');
+
+                  // 2. Add Note
+                  const note = {
+                    deckName: targetDeck,
+                    modelName: 'Image Occlusion',
+                    fields: {
+                      'Image': `<img src="${filename}">`,
+                      'Occlusion': `{{c1::image-occlusion:rect:left=0:top=0:width=0.001:height=0.001}}<br>`,
+                      'Header': '',
+                      'Back Extra': '',
+                      'Comments': ''
+                    },
+                    options: {
+                      allowDuplicate: true
+                    },
+                    tags: ['anki-quick-adder']
+                  };
+                  
+                  const addRes = await new Promise(resolve => {
+                    chrome.runtime.sendMessage({
+                      action: 'anki-connect',
+                      ankiAction: 'addNote',
+                      params: { note }
+                    }, resolve);
+                  });
+                  
+                  if (!addRes || !addRes.success) throw new Error(addRes?.error || 'Failed to add note');
+
                   modalContainer.style.display = 'block';
                   shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
                   shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
                   shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
-                  showToast('Copied to clipboard! Paste directly into Anki.');
-                })
-                .catch(err => {
-                  console.error('Failed to copy image: ', err);
+                  showToast('Sent to Anki!');
+                } catch (err) {
+                  console.error('Failed to sync to Anki: ', err);
                   modalContainer.style.display = 'block';
                   shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
                   shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
                   shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
-                  showToast('Failed to copy image to clipboard.');
-                });
+                  showToast('Anki closed! Copying to clipboard instead.');
+                  
+                  // Fallback to clipboard
+                  fetch(croppedDataUrl)
+                    .then(res => res.blob())
+                    .then(blob => navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]))
+                    .catch(e => console.error(e));
+                }
+              });
             }
           };
           img.src = response.dataUrl;
@@ -529,24 +619,55 @@ function createModal() {
       return;
     }
 
-    chrome.storage.local.get({ pendingCards: [] }, (result) => {
+    chrome.storage.local.get({ targetDeck: 'Default', pendingCards: [] }, async (result) => {
+      const targetDeck = result.targetDeck;
       const cards = result.pendingCards || [];
-      cards.push({
+      
+      const cardData = {
         front: frontHTML,
         back: backHTML,
         type: 'basic',
         createdAt: new Date().toISOString()
+      };
+      
+      const note = {
+        deckName: targetDeck,
+        modelName: 'Basic',
+        fields: {
+          Front: frontHTML,
+          Back: backHTML
+        },
+        options: {
+          allowDuplicate: true
+        },
+        tags: ['anki-quick-adder']
+      };
+      
+      const response = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ action: 'anki-connect', ankiAction: 'addNote', params: { note } }, resolve);
       });
-      chrome.storage.local.set({ pendingCards: cards }, () => {
+      
+      if (response && response.success) {
         frontField.innerHTML = '';
         backField.innerHTML = '';
         chrome.storage.local.remove('modalDraftState');
-        
         shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
         shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
         shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
-        showToast('Card added!');
-      });
+        showToast('Sent to Anki!');
+      } else {
+        // Fallback to pending cards
+        cards.push(cardData);
+        chrome.storage.local.set({ pendingCards: cards }, () => {
+          frontField.innerHTML = '';
+          backField.innerHTML = '';
+          chrome.storage.local.remove('modalDraftState');
+          shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
+          shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
+          shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
+          showToast('Anki closed! Saved to pending cards.');
+        });
+      }
     });
   };
 
