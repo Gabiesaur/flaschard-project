@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   const countEl = document.getElementById('card-count');
-  const exportBasicBtn = document.getElementById('export-basic-btn');
+  const syncAnkiBtn = document.getElementById('sync-anki-btn');
   const clearBtn = document.getElementById('clear-btn');
   const cardsContainer = document.getElementById('cards-container');
 
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentCards = result.pendingCards;
       countEl.textContent = currentCards.length;
 
-      exportBasicBtn.disabled = currentCards.filter(c => c.type !== 'image-occlusion').length === 0;
+      syncAnkiBtn.disabled = currentCards.length === 0;
       clearBtn.disabled = currentCards.length === 0;
 
       renderCards();
@@ -536,15 +536,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-  exportBasicBtn.addEventListener('click', () => {
-    const basicCards = currentCards.filter(c => c.type !== 'image-occlusion');
-    if (basicCards.length === 0) return;
-
-    let basicContent = "#separator:tab\n#html:true\n";
-    basicCards.forEach(card => {
-      basicContent += `${formatForAnki(card.front)}\t${formatForAnki(card.back)}\n`;
+  syncAnkiBtn.addEventListener('click', () => {
+    if (currentCards.length === 0) return;
+    
+    syncAnkiBtn.disabled = true;
+    syncAnkiBtn.textContent = 'Syncing...';
+    
+    chrome.storage.local.get({ targetDeck: 'Default' }, async (result) => {
+      const deckName = result.targetDeck;
+      let successCount = 0;
+      
+      for (const card of currentCards) {
+        if (card.type === 'basic' || !card.type) {
+          const note = {
+            deckName: deckName,
+            modelName: 'Basic',
+            fields: {
+              Front: card.front,
+              Back: card.back
+            },
+            options: {
+              allowDuplicate: true
+            },
+            tags: ['anki-quick-adder']
+          };
+          
+          const response = await new Promise(resolve => {
+            chrome.runtime.sendMessage({ action: 'anki-connect', ankiAction: 'addNote', params: { note } }, resolve);
+          });
+          
+          if (response && response.success) {
+            successCount++;
+          } else {
+            alert('Failed to sync card: ' + (response?.error || 'Unknown error'));
+            break;
+          }
+        } else {
+          successCount++;
+        }
+      }
+      
+      if (successCount === currentCards.length) {
+        chrome.storage.local.set({ pendingCards: [] }, () => {
+          syncAnkiBtn.textContent = 'Synced!';
+          setTimeout(() => {
+            syncAnkiBtn.textContent = 'Sync All to Anki';
+            syncAnkiBtn.disabled = false;
+            loadCards();
+          }, 1500);
+        });
+      } else {
+        syncAnkiBtn.textContent = 'Sync All to Anki';
+        syncAnkiBtn.disabled = false;
+        currentCards.splice(0, successCount);
+        chrome.storage.local.set({ pendingCards: currentCards }, () => {
+          loadCards();
+        });
+      }
     });
-    downloadTsv(basicContent, 'anki_export_basic.txt');
   });
 
   // Clear logic
