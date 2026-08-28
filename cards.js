@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   const countEl = document.getElementById('card-count');
-  const exportBtn = document.getElementById('export-btn');
+  const exportBasicBtn = document.getElementById('export-basic-btn');
   const clearBtn = document.getElementById('clear-btn');
   const cardsContainer = document.getElementById('cards-container');
 
@@ -15,24 +15,13 @@ document.addEventListener('DOMContentLoaded', () => {
     return `<div style="position:relative;display:inline-block;max-width:100%;"><img src="${occlusion.image}" style="display:block;max-width:100%;border-radius:4px;">${masks}</div>`;
   }
 
-  function imageOcclusionField(card, revealMasks) {
-    const occlusion = card.imageOcclusion;
-    if (!occlusion || !occlusion.image || !occlusion.masks?.length) return '';
-    const maskClass = revealMasks ? 'cloze-highlight' : 'cloze';
-    const masks = occlusion.masks.map(mask =>
-      `<div class="${maskClass}" data-ordinal="1" data-shape="${mask.shape === 'ellipse' ? 'ellipse' : 'rect'}" data-left="${mask.left.toFixed(4)}" data-top="${mask.top.toFixed(4)}" data-width="${mask.width.toFixed(4)}" data-height="${mask.height.toFixed(4)}" data-occludeInactive="1"></div>`
-    ).join('');
-    const extra = revealMasks ? card.back : card.front;
-    return `<div style="display: none">${masks}</div><div id="err"></div><div id="image-occlusion-container"><img src="${occlusion.image}"><canvas id="image-occlusion-canvas"></canvas></div><script>try { anki.imageOcclusion.setup(); } catch (exc) { document.getElementById("err").innerHTML = "Error loading image occlusion. Is your Anki version up to date?"; }</script>${extra ? `<div>${extra}</div>` : ''}${revealMasks ? '<div><button id="toggle">Toggle Masks</button></div>' : ''}`;
-  }
-
   // Load cards from storage
   function loadCards() {
     chrome.storage.local.get({ pendingCards: [] }, (result) => {
       currentCards = result.pendingCards;
       countEl.textContent = currentCards.length;
 
-      exportBtn.disabled = currentCards.length === 0;
+      exportBasicBtn.disabled = currentCards.filter(c => c.type !== 'image-occlusion').length === 0;
       clearBtn.disabled = currentCards.length === 0;
 
       renderCards();
@@ -344,16 +333,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const cardEl = document.createElement('div');
       cardEl.className = 'card';
 
+      const typeHeaderRow = document.createElement('div');
+      typeHeaderRow.className = 'card-header-row';
+      typeHeaderRow.style.marginBottom = '12px';
+      
+      const typeHeader = document.createElement('div');
+      typeHeader.className = 'card-header';
+      typeHeader.style.color = '#0078d7';
+      typeHeader.style.fontSize = '14px';
+      typeHeader.textContent = card.type === 'image-occlusion' ? 'Image Occlusion' : 'Basic';
+      typeHeaderRow.appendChild(typeHeader);
+
       const frontHeaderRow = document.createElement('div');
       frontHeaderRow.className = 'card-header-row';
       const frontHeader = document.createElement('div');
       frontHeader.className = 'card-header';
-      frontHeader.textContent = card.type === 'image-occlusion' ? 'Image occlusion' : 'Front · Basic';
+      frontHeader.textContent = card.type === 'image-occlusion' ? 'Image' : 'Front';
       frontHeaderRow.appendChild(frontHeader);
 
       const frontEl = document.createElement('div');
       frontEl.className = 'card-front';
       frontEl.innerHTML = card.type === 'image-occlusion' ? `${imageOcclusionPreview(card)}${card.front ? `<div>${card.front}</div>` : ''}` : card.front;
+      
+      if (card.type === 'image-occlusion') {
+        frontEl.style.borderBottom = 'none';
+        frontEl.style.paddingBottom = '0';
+        frontEl.style.marginBottom = '0';
+      }
 
       const backHeaderRow = document.createElement('div');
       backHeaderRow.className = 'card-header-row';
@@ -372,6 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-small';
       editBtn.textContent = 'Edit';
+      if (card.type === 'image-occlusion') {
+        editBtn.style.display = 'none';
+      }
 
       const cancelBtn = document.createElement('button');
       cancelBtn.className = 'btn btn-small';
@@ -443,18 +452,56 @@ document.addEventListener('DOMContentLoaded', () => {
       deleteBtn.addEventListener('click', () => {
         if (confirm("Delete this card?")) {
           currentCards.splice(index, 1);
-          chrome.storage.local.set({ pendingCards: currentCards });
+          chrome.storage.local.set({ pendingCards: currentCards }, () => {
+            loadCards();
+          });
         }
       });
+      
+      if (card.type === 'image-occlusion') {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-small btn-primary';
+        copyBtn.textContent = 'Copy Image';
+        copyBtn.style.marginRight = '8px';
+        copyBtn.addEventListener('click', async () => {
+          try {
+            const response = await fetch(card.imageOcclusion.image);
+            const blob = await response.blob();
+            
+            await navigator.clipboard.write([
+              new ClipboardItem({
+                [blob.type]: blob
+              })
+            ]);
+            
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            copyBtn.style.backgroundColor = '#059669';
+            copyBtn.style.borderColor = '#047857';
+            setTimeout(() => {
+              copyBtn.textContent = originalText;
+              copyBtn.style.backgroundColor = '';
+              copyBtn.style.borderColor = '';
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy: ', err);
+            alert('Failed to copy image to clipboard.');
+          }
+        });
+        actionsEl.appendChild(copyBtn);
+      }
 
       actionsEl.appendChild(editBtn);
       actionsEl.appendChild(cancelBtn);
       actionsEl.appendChild(deleteBtn);
 
+      cardEl.appendChild(typeHeaderRow);
       cardEl.appendChild(frontHeaderRow);
       cardEl.appendChild(frontEl);
-      cardEl.appendChild(backHeaderRow);
-      cardEl.appendChild(backEl);
+      if (card.type !== 'image-occlusion') {
+        cardEl.appendChild(backHeaderRow);
+        cardEl.appendChild(backEl);
+      }
       cardEl.appendChild(actionsEl);
 
       cardsContainer.appendChild(cardEl);
@@ -471,41 +518,33 @@ document.addEventListener('DOMContentLoaded', () => {
     return str;
   }
 
-  // Export logic
-  exportBtn.addEventListener('click', () => {
-    if (currentCards.length === 0) return;
-
-    let tsvContent = "#separator:tab\n#html:true\n";
-
-    currentCards.forEach(card => {
-      const isImageOcclusion = card.type === 'image-occlusion';
-      const front = formatForAnki(isImageOcclusion ? imageOcclusionField(card, false) : card.front);
-      const back = formatForAnki(isImageOcclusion ? imageOcclusionField(card, true) : card.back);
-      tsvContent += `${front}\t${back}\n`;
-    });
-
-    const blob = new Blob([tsvContent], { type: 'text/plain;charset=utf-8' });
+  const downloadTsv = (content, filename) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-
     if (chrome.downloads) {
-      chrome.downloads.download({
-        url: url,
-        filename: 'anki_export.txt',
-        saveAs: true
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error(chrome.runtime.lastError);
-        } else {
-          URL.revokeObjectURL(url);
-        }
+      chrome.downloads.download({ url: url, filename: filename, saveAs: true }, () => {
+        URL.revokeObjectURL(url);
       });
     } else {
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'anki_export.txt';
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     }
+  };
+
+
+
+  exportBasicBtn.addEventListener('click', () => {
+    const basicCards = currentCards.filter(c => c.type !== 'image-occlusion');
+    if (basicCards.length === 0) return;
+
+    let basicContent = "#separator:tab\n#html:true\n";
+    basicCards.forEach(card => {
+      basicContent += `${formatForAnki(card.front)}\t${formatForAnki(card.back)}\n`;
+    });
+    downloadTsv(basicContent, 'anki_export_basic.txt');
   });
 
   // Clear logic

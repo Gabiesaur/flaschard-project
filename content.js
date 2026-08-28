@@ -1,5 +1,6 @@
 let shadowRoot = null;
 let modalContainer = null;
+let isSyncingDraft = false;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "toggle-modal") {
@@ -7,16 +8,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.modalDraftState && shadowRoot) {
+    const newState = changes.modalDraftState.newValue;
+    const frontField = shadowRoot.getElementById('anki-front-field');
+    const backField = shadowRoot.getElementById('anki-back-field');
+    
+    if (frontField && backField) {
+      isSyncingDraft = true;
+      if (!newState) {
+        frontField.innerHTML = '';
+        backField.innerHTML = '';
+      } else {
+        if (frontField.innerHTML !== (newState.front || '')) frontField.innerHTML = newState.front || '';
+        if (backField.innerHTML !== (newState.back || '')) backField.innerHTML = newState.back || '';
+      }
+      setTimeout(() => { isSyncingDraft = false; }, 50);
+    }
+  }
+});
+
 function toggleModal() {
   if (!modalContainer) {
     createModal();
   } else {
-    const isVisible = modalContainer.style.display !== "none";
-    modalContainer.style.display = isVisible ? "none" : "flex";
-    if (!isVisible) {
-      shadowRoot.getElementById('anki-selection-overlay').style.display = 'flex';
-      shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
-      shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
+    const selOverlay = shadowRoot.getElementById('anki-selection-overlay');
+    const edOverlay = shadowRoot.getElementById('anki-editor-overlay');
+    const cropOverlay = shadowRoot.getElementById('anki-crop-overlay');
+    const toast = shadowRoot.getElementById('anki-toast');
+
+    const isVisible = selOverlay.style.display !== "none" || edOverlay.style.display !== "none" || cropOverlay.style.display !== "none";
+    
+    if (isVisible) {
+      selOverlay.style.display = 'none';
+      edOverlay.style.display = 'none';
+      cropOverlay.style.display = 'none';
+      
+      if (!toast || !toast.classList.contains('show')) {
+        modalContainer.style.display = "none";
+      }
+    } else {
+      modalContainer.style.display = "block";
+      selOverlay.style.display = 'flex';
+      edOverlay.style.display = 'none';
+      cropOverlay.style.display = 'none';
+      
+      // Pull latest draft manually when toggling just to be safe
+      chrome.storage.local.get(['modalDraftState'], (result) => {
+        const frontField = shadowRoot.getElementById('anki-front-field');
+        const backField = shadowRoot.getElementById('anki-back-field');
+        if (frontField && backField) {
+          isSyncingDraft = true;
+          if (result.modalDraftState) {
+            frontField.innerHTML = result.modalDraftState.front || '';
+            backField.innerHTML = result.modalDraftState.back || '';
+          } else {
+            frontField.innerHTML = '';
+            backField.innerHTML = '';
+          }
+          setTimeout(() => { isSyncingDraft = false; }, 50);
+        }
+      });
     }
   }
 }
@@ -191,6 +243,9 @@ function createModal() {
               </svg>
             </button>
             <span>Front</span>
+            <button type="button" class="field-screenshot-btn" data-target="front" title="Take Screenshot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            </button>
           </div>
           <div class="field-input" id="anki-front-field" contenteditable="true"></div>
         </div>
@@ -203,6 +258,9 @@ function createModal() {
               </svg>
             </button>
             <span>Back</span>
+            <button type="button" class="field-screenshot-btn" data-target="back" title="Take Screenshot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            </button>
           </div>
           <div class="field-input" id="anki-back-field" contenteditable="true"></div>
         </div>
@@ -211,6 +269,11 @@ function createModal() {
           <button class="add-btn" id="anki-add-btn">Add Card</button>
         </div>
       </div>
+    </div>
+
+    <div class="anki-toast" id="anki-toast">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+      <span>Card added!</span>
     </div>
   `;
   
@@ -232,6 +295,49 @@ function createModal() {
   const frontField = shadowRoot.getElementById('anki-front-field');
   const backField = shadowRoot.getElementById('anki-back-field');
   const addBtn = shadowRoot.getElementById('anki-add-btn');
+
+  let toastTimeout;
+  const showToast = (message) => {
+    const toast = shadowRoot.getElementById('anki-toast');
+    if (toast) {
+      toast.querySelector('span').textContent = message;
+      toast.classList.add('show');
+      modalContainer.style.display = 'block'; // Ensure host is visible
+      
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+        if (selOverlay.style.display === 'none' && 
+            editorOverlay.style.display === 'none' &&
+            cropOverlay.style.display === 'none') {
+          modalContainer.style.display = 'none';
+        }
+      }, 3000);
+    }
+  };
+
+  // Load saved state
+  chrome.storage.local.get(['modalDraftState'], (result) => {
+    if (result.modalDraftState) {
+      frontField.innerHTML = result.modalDraftState.front || '';
+      backField.innerHTML = result.modalDraftState.back || '';
+    }
+  });
+
+  // Save state on input
+  const saveDraftState = () => {
+    if (isSyncingDraft) return;
+    chrome.storage.local.set({
+      modalDraftState: {
+        front: frontField.innerHTML,
+        back: backField.innerHTML
+      }
+    });
+  };
+
+  const draftObserver = new MutationObserver(saveDraftState);
+  draftObserver.observe(frontField, { childList: true, subtree: true, characterData: true });
+  draftObserver.observe(backField, { childList: true, subtree: true, characterData: true });
 
   selCloseBtn.addEventListener('click', toggleModal);
   selOverlay.addEventListener('click', toggleModal);
@@ -256,6 +362,16 @@ function createModal() {
   // Crop Logic
   let isCropping = false;
   let startX, startY;
+  let screenshotTargetField = null; // Either 'front' or 'back' or null
+
+  shadowRoot.querySelectorAll('.field-screenshot-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      screenshotTargetField = btn.dataset.target === 'front' ? frontField : backField;
+      editorOverlay.style.display = 'none';
+      cropOverlay.style.display = 'block';
+      document.body.style.userSelect = 'none';
+    });
+  });
 
   cropOverlay.addEventListener('pointerdown', (e) => {
     isCropping = true;
@@ -302,7 +418,13 @@ function createModal() {
 
     if (width < 10 || height < 10) {
       // Crop area too small, cancel
-      toggleModal();
+      if (screenshotTargetField) {
+        cropOverlay.style.display = 'none';
+        editorOverlay.style.display = 'flex';
+        screenshotTargetField = null;
+      } else {
+        toggleModal();
+      }
       return;
     }
 
@@ -319,31 +441,69 @@ function createModal() {
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
-            // devicePixelRatio is important if taking screenshot on retina displays
             const ratio = window.devicePixelRatio || 1;
             ctx.drawImage(img, left * ratio, top * ratio, width * ratio, height * ratio, 0, 0, width, height);
             
             const croppedDataUrl = canvas.toDataURL('image/png');
             
-            // Save directly
-            chrome.storage.local.get({ pendingCards: [] }, (result) => {
-              const cards = result.pendingCards || [];
-              cards.push({
-                front: '',
-                back: '',
-                type: 'image-occlusion',
-                imageOcclusion: { image: croppedDataUrl, masks: [] },
-                createdAt: new Date().toISOString()
-              });
-              chrome.storage.local.set({ pendingCards: cards }, () => {
-                // Done
-              });
-            });
+            if (screenshotTargetField) {
+              // Restore UI first so the field can receive focus
+              modalContainer.style.display = 'block';
+              cropOverlay.style.display = 'none';
+              editorOverlay.style.display = 'flex';
+              
+              setTimeout(() => {
+                screenshotTargetField.focus();
+                // Ensure selection is inside the field
+                const range = document.createRange();
+                range.selectNodeContents(screenshotTargetField);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                
+                document.execCommand('insertHTML', false, `<img src="${croppedDataUrl}" style="max-width:100%; border-radius:4px;"><br>`);
+                screenshotTargetField = null;
+              }, 50);
+            } else {
+              // We are in Image Occlusion mode, copy directly to clipboard
+              fetch(croppedDataUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                  return navigator.clipboard.write([
+                    new ClipboardItem({
+                      [blob.type]: blob
+                    })
+                  ]);
+                })
+                .then(() => {
+                  modalContainer.style.display = 'block';
+                  shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
+                  shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
+                  shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
+                  showToast('Copied to clipboard! Paste directly into Anki.');
+                })
+                .catch(err => {
+                  console.error('Failed to copy image: ', err);
+                  modalContainer.style.display = 'block';
+                  shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
+                  shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
+                  shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
+                  showToast('Failed to copy image to clipboard.');
+                });
+            }
           };
           img.src = response.dataUrl;
         } else {
           alert('Failed to capture screen.');
-          toggleModal();
+          if (screenshotTargetField) {
+            modalContainer.style.display = 'flex';
+            cropOverlay.style.display = 'none';
+            editorOverlay.style.display = 'flex';
+            screenshotTargetField = null;
+          } else {
+            toggleModal();
+          }
         }
       });
     }, 150);
@@ -380,7 +540,12 @@ function createModal() {
       chrome.storage.local.set({ pendingCards: cards }, () => {
         frontField.innerHTML = '';
         backField.innerHTML = '';
-        toggleModal();
+        chrome.storage.local.remove('modalDraftState');
+        
+        shadowRoot.getElementById('anki-selection-overlay').style.display = 'none';
+        shadowRoot.getElementById('anki-editor-overlay').style.display = 'none';
+        shadowRoot.getElementById('anki-crop-overlay').style.display = 'none';
+        showToast('Card added!');
       });
     });
   };

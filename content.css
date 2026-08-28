@@ -427,3 +427,56 @@
 .add-btn:hover {
   background-color: #333;
 }
+
+.field-screenshot-btn {
+  margin-left: auto;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #4b5563;
+  transition: all 0.15s ease;
+}
+.field-screenshot-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+.field-screenshot-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Toast Notification */
+.anki-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #111827;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 999999999;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+.anki-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.anki-toast svg {
+  width: 20px;
+  height: 20px;
+  color: #34d399;
+}
